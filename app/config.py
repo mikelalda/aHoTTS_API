@@ -37,7 +37,7 @@ LANGUAGE_NAMES: Dict[str, str] = {
 }
 
 # HuggingFace repo pattern
-HF_REPO_PATTERN = "HiTZ/TTS-{lang}_{voice}"
+HF_REPO_PATTERN = os.environ.get("HF_REPO_PATTERN", "HiTZ/TTS-{lang}_{voice}")
 
 # Maximum text length
 MAX_TEXT_LENGTH = int(os.environ.get("MAX_TEXT_LENGTH", "5000"))
