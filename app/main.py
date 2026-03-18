@@ -5,10 +5,12 @@
 import logging
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.config import (
     API_DESCRIPTION,
@@ -240,3 +242,17 @@ async def download_voice(language: str, voice: str):
         }
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Web client (browser UI with Transformers.js + Web Speech API)
+# ---------------------------------------------------------------------------
+
+WEB_DIR = Path(__file__).resolve().parent.parent / "web"
+
+if WEB_DIR.is_dir():
+    app.mount(
+        "/web",
+        StaticFiles(directory=str(WEB_DIR), html=True),
+        name="web-static",
+    )
