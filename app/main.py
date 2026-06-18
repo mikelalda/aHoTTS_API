@@ -11,6 +11,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.background import BackgroundTask
 
 from app.config import (
     API_DESCRIPTION,
@@ -39,6 +40,27 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _cleanup_output_files() -> None:
+    """Remove all temporary synthesis output files."""
+    if not os.path.isdir(OUTPUT_PATH):
+        return
+    for name in os.listdir(OUTPUT_PATH):
+        if name.startswith("tts_") and name.endswith(".wav"):
+            try:
+                os.remove(os.path.join(OUTPUT_PATH, name))
+            except OSError:
+                pass
+
+
+def _safe_remove(path: str) -> None:
+    """Delete a single file, ignoring errors (used as a response background task)."""
+    try:
+        os.remove(path)
+        logger.info(f"Removed temporary audio file: {path}")
+    except OSError:
+        pass
+
+
 # ---------------------------------------------------------------------------
 # Lifespan: startup / shutdown
 # ---------------------------------------------------------------------------
@@ -47,6 +69,9 @@ async def lifespan(app: FastAPI):
     """Application lifespan: startup and shutdown events."""
     logger.info("Starting aHoTTS API...")
     os.makedirs(OUTPUT_PATH, exist_ok=True)
+
+    # Remove any output files orphaned by a previous abrupt shutdown.
+    _cleanup_output_files()
 
     if tts_engine.is_binary_available():
         logger.info("TTS binary found and executable.")
@@ -57,12 +82,7 @@ async def lifespan(app: FastAPI):
 
     # Cleanup: remove temporary output files
     logger.info("Shutting down aHoTTS API...")
-    for f in os.listdir(OUTPUT_PATH):
-        if f.startswith("tts_") and f.endswith(".wav"):
-            try:
-                os.remove(os.path.join(OUTPUT_PATH, f))
-            except OSError:
-                pass
+    _cleanup_output_files()
 
 
 # ---------------------------------------------------------------------------
@@ -178,11 +198,13 @@ async def synthesize(request: SynthesizeRequest):
             language=request.language,
             voice=request.voice,
         )
+        # Delete the WAV as soon as it has been streamed to the client: the
+        # browser keeps its own copy (Blob), so the server file is no longer needed.
         return FileResponse(
             path=output_path,
             media_type="audio/wav",
             filename=f"tts_{request.language}_{request.voice}.wav",
-            background=None,
+            background=BackgroundTask(_safe_remove, output_path),
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
