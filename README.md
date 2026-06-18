@@ -111,6 +111,79 @@ Variables de entorno:
 | `MAX_TEXT_LENGTH` | Longitud máxima del texto de entrada | `5000` |
 | `AHOTTS_BASE_PATH` | Ruta base del proyecto aHoTTS | `/app/aHoTTS` |
 
+## Uso en navegador (Transformers.js + Web Speech API)
+
+La API incluye un cliente web que permite sintetizar voz **directamente en el
+navegador** combinando tres motores en paralelo:
+
+| Motor | Descripción | Ejecución |
+|-------|-------------|-----------|
+| **aHoTTS API** | Voces HiTZ/Aholab de alta calidad vía el servidor FastAPI | Servidor |
+| **Transformers.js** | Modelos VITS (MMS-TTS) ejecutados en el propio navegador con ONNX/WASM | Cliente |
+| **Web Speech API** | Voces nativas del navegador (Chrome, Firefox, Safari…) | Cliente |
+
+### Acceder a la demo
+
+Con el servidor levantado, abre en tu navegador:
+
+```
+http://localhost:8000/web
+```
+
+### Usar la librería JavaScript en tu propia web
+
+```html
+<script type="module">
+import { AhoTTSManager } from "http://localhost:8000/web/js/ahotts-browser.js";
+
+const tts = new AhoTTSManager({
+  apiUrl: "http://localhost:8000",          // URL del backend
+});
+
+// ── Opción 1: Sintetizar vía la API del servidor ──
+const wavBlob = await tts.synthesize("Kaixo mundua", {
+  engine: "api",
+  language: "eu",
+  voice: "antton",
+});
+const audio = new Audio(URL.createObjectURL(wavBlob));
+audio.play();
+
+// ── Opción 2: Sintetizar en el navegador con Transformers.js ──
+const wavBlob2 = await tts.synthesize("Hola mundo", {
+  engine: "transformers",
+  language: "es",
+  onProgress: (p) => console.log(p),   // progreso de descarga del modelo
+});
+new Audio(URL.createObjectURL(wavBlob2)).play();
+
+// ── Opción 3: Usar Web Speech API (voces nativas del navegador) ──
+await tts.synthesize("Hello world", {
+  engine: "webspeech",
+  voice: "en-US",
+});
+
+// ── Listar todas las voces de los tres motores ──
+const voices = await tts.getAllVoices();
+console.log(voices);
+// → { api: [...], transformers: [...], webspeech: [...] }
+</script>
+```
+
+### Personalizar modelos de Transformers.js
+
+Por defecto se usan los modelos MMS-TTS de Meta que soportan los cuatro
+idiomas. Puedes sobrescribir o ampliar el mapa de modelos:
+
+```js
+const tts = new AhoTTSManager({
+  transformersModels: {
+    eu: { id: "Xenova/mms-tts-eus", label: "MMS Euskara" },
+    en: { id: "Xenova/mms-tts-eng", label: "MMS English" },
+  },
+});
+```
+
 ## Arquitectura
 
 ```
@@ -121,6 +194,11 @@ aHoTTS_API/
 │   ├── engine.py        # Motor TTS (descarga modelos + ejecuta binario)
 │   ├── main.py          # Aplicación FastAPI con endpoints
 │   └── models.py        # Modelos Pydantic (request/response)
+├── web/
+│   ├── index.html       # Demo TTS en navegador
+│   ├── css/styles.css   # Estilos de la demo
+│   └── js/
+│       └── ahotts-browser.js  # Librería JS: Transformers.js + Web Speech + API
 ├── Dockerfile
 ├── docker-compose.yml
 ├── requirements.txt
